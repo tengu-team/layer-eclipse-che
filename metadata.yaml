@@ -1,0 +1,12 @@
+name: eclipse-che
+summary: Installs the Eclipse Che cloud editor.
+maintainers:
+  - Merlijn Sebrechts <merlijn.sebrechts@gmail.com>
+description: |
+tags:
+  - application_development
+subordinate: false
+provides:
+  editor:
+    interface: http
+series: [ "xenial" ]
