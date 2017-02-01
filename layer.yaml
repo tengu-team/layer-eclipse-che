@@ -1,2 +1,2 @@
-includes: ['layer:docker']
+includes: ['layer:docker', 'interface:http']
 repo: git@github.com:IBCNServices/layer-eclipse-che.git
