@@ -31,34 +31,23 @@ from charmhelpers.core.hookenv import (
 from charms.reactive import set_state, when, when_not
 
 
+CHE_VERSION = "6.0.0-M4"
+
+
 @when("docker.available")
 @when_not("che.available")
 def run_che():
     status_set('maintenance', 'Installing Eclipse Che')
     # Start and stop Che so che's config is generated
     start_che()
+    add_juju_stack()
     stop_che()
-    # Add Juju stuff to Che config
-    json_add_object_to_array(
-        "{}/templates/stack-juju-charm.json".format(charm_dir()),
-        "/home/ubuntu/instance/data/stacks/stacks.json"
-    )
-    copyfile(
-        "{}/templates/type-juju.svg".format(charm_dir()),
-        "/home/ubuntu/instance/data/stacks/images/type-juju.svg"
-    )
-    json_add_object_to_array(
-        "{}/templates/project-template-charms.json".format(charm_dir()),
-        "/home/ubuntu/instance/data/templates/samples.json"
-    )
-    json_add_object_to_array(
-        "{}/templates/project-template-interface.json".format(charm_dir()),
-        "/home/ubuntu/instance/data/templates/samples.json"
-    )
-    json_add_object_to_array(
-        "{}/templates/project-template-layer.json".format(charm_dir()),
-        "/home/ubuntu/instance/data/templates/samples.json"
-    )
+    copyfile("{}/templates/project-template-charms.json".format(charm_dir()),
+             "/home/ubuntu/instance/data/templates/project-template-charms.json")
+    copyfile("{}/templates/project-template-interface.json".format(charm_dir()),
+             "/home/ubuntu/instance/data/templates/project-template-interface.json")
+    copyfile("{}/templates/project-template-layer.json".format(charm_dir()),
+             "/home/ubuntu/instance/data/templates/project-template-layer.json")
     # Start Che for real
     start_che()
     # opened ports are used by `juju expose` so It's important to open all
@@ -89,7 +78,7 @@ def start_che():
         '-v', '/home/ubuntu/:/data',
         '-e', 'CHE_HOST={}'.format(unit_public_ip()),
         '-e', 'CHE_DOCKER_IP_EXTERNAL={}'.format(unit_public_ip()),
-        'eclipse/che:{}'.format(config()['version']),
+        'eclipse/che:{}'.format(CHE_VERSION),
         'start',
         '--fast'], universal_newlines=True).rstrip()
     wait_until_che_running()
@@ -132,28 +121,32 @@ def stop_che():
         '-v', '/home/ubuntu/:/data',
         '-e', 'CHE_HOST={}'.format(unit_public_ip()),
         '-e', 'CHE_DOCKER_IP_EXTERNAL={}'.format(unit_public_ip()),
-        'eclipse/che:{}'.format(config()['version']),
+        'eclipse/che:{}'.format(CHE_VERSION),
         'stop'])
     print('Che is stopped!')
 
 
-def json_add_object_to_array(object_path, array_path):
-    with open(object_path, 'r') as object_file:
-        patch = json.loads(object_file.read())
-    with open(array_path, 'r+') as array_file:
-        samples = json.loads(array_file.read())
-        samples.append(patch)
-        array_file.seek(0)
-        array_file.write(json.dumps(samples, indent=4))
-        array_file.truncate()
+def add_juju_stack():
+    # Add Juju stack
+    try:
+        url = "http://localhost:8080/api/stack"
+        headers = {'Content-Type': 'application/json',
+                   'Accept': 'application/json'}
+        with open("{}/templates/stack-juju-charm.json".format(charm_dir()), 'r') as stackfile:
+            stackdata = json.load(stackfile)
+        response = requests.post(url, data=json.dumps(stackdata), headers=headers)
+        if response.status_code != 201:
+            print("Could not create Juju stack.")
+        json_response = json.loads(response.text)
+        juju_stack_id = json_response['id']
+    except requests.exceptions.ConnectionError as err:
+        print(err)
+    # Add Juju stack icon
+    try:
+        url = "http://localhost:8080/api/stack/" + juju_stack_id + '/icon'
+        response = requests.post(url, files={'body': open("{}/templates/type-juju.svg".format(charm_dir()), "rb")})
+        if response.status_code != 200:
+            print("Juju stack icon upload failed.")
+    except requests.exceptions.ConnectionError as err:
+        print(err)
 
-
-# def create_juju_stack():
-#     stackpath = "{}/templates/juju-charm-stack.json".format(charm_dir())
-#     with open(stackpath, 'r') as stackfile:
-#         stack = stackfile.read()
-#     response = requests.post('http://localhost:8080/api/stack', data=stack)
-#     if response.status_code not in (401, 409):
-#         print("Creating stack failed!", response.text())
-#         exit(1)
-#     print(response.text())

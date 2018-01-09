@@ -1,6 +1,6 @@
 # Overview
 
-This Charm deploys the latest [Eclipse Che](http://www.eclipse.org/che/) with integration for **developing Juju Charms from your browser**. Eclipse Che is a Next-Generation IDE with a developer workspace server.
+This Charm deploys [Eclipse Che](http://www.eclipse.org/che/) version 6.0.0-M4 with integration for **developing Juju Charms from your browser**. Eclipse Che is a Next-Generation IDE with a developer workspace server.
 
 Your browser becomes your IDE, your workspaces are docker containers. All the development tools, dependencies and libraries are already installed in the workspace. The only thing you have to do is surf to the url and start coding. To top it all off, you get an in-browser terminal right into your workspace.
 
