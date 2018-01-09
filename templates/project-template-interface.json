@@ -1,4 +1,4 @@
-{
+[{
   "name":"reactive-interface",
   "displayName":"Reactive Interface Layer",
   "path":"/charms/interfaces/che-project-interface",
@@ -17,4 +17,4 @@
   "links":[],
   "category":"Juju",
   "tags":["juju-reactive"]
-}
+}]

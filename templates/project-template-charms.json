@@ -1,4 +1,4 @@
-{
+[{
   "name":"charms",
   "displayName":"charms",
   "path":"/charms",
@@ -17,4 +17,4 @@
   "links":[],
   "category":"Juju",
   "tags":["juju"]
-}
+}]
