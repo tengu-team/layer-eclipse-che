@@ -17,7 +17,8 @@ import sys
 import json
 from shutil import copyfile
 from time import sleep
-from subprocess import check_output, check_call, CalledProcessError
+from subprocess import check_output, check_call, CalledProcessError, call
+from charms import layer
 
 import requests
 from charmhelpers.core.hookenv import (
@@ -25,29 +26,36 @@ from charmhelpers.core.hookenv import (
     open_port,
     unit_public_ip,
     charm_dir,
-    config,
 )
 
-from charms.reactive import set_state, when, when_not
+from charms.reactive import set_flag, when, when_not
 
 
-CHE_VERSION = "6.0.0-M4"
+CHE_VERSION = "6.4.0"
+HOME = "/home/ubuntu"
+DATA_DIRECTORY = HOME + "/data"
+ASSEMBLY_DIRECTORY = HOME + "/assembly"
+
+options = layer.options('eclipse-che')
+assembly_image = options.get('assembly', '')
 
 
 @when("docker.available")
 @when_not("che.available")
 def run_che():
     status_set('maintenance', 'Installing Eclipse Che')
+    # Build custom assembly
+    build_assembly()
     # Start and stop Che so che's config is generated
     start_che()
     add_juju_stack()
     stop_che()
     copyfile("{}/templates/project-template-charms.json".format(charm_dir()),
-             "/home/ubuntu/instance/data/templates/project-template-charms.json")
+             DATA_DIRECTORY + "/instance/data/templates/project-template-charms.json")
     copyfile("{}/templates/project-template-interface.json".format(charm_dir()),
-             "/home/ubuntu/instance/data/templates/project-template-interface.json")
+             DATA_DIRECTORY + "/instance/data/templates/project-template-interface.json")
     copyfile("{}/templates/project-template-layer.json".format(charm_dir()),
-             "/home/ubuntu/instance/data/templates/project-template-layer.json")
+             DATA_DIRECTORY + "/instance/data/templates/project-template-layer.json")
     # Start Che for real
     start_che()
     # opened ports are used by `juju expose` so It's important to open all
@@ -55,12 +63,18 @@ def run_che():
     open_port('8080', protocol="TCP")           # Port to the UI
     open_port('32768-65535', protocol="TCP")    # Ports to the workspaces
     status_set('active', 'Ready (eclipse/che)')
-    set_state('che.available')
+    set_flag('che.available')
 
 
 @when('editor.available', 'che.available')
 def configure_http_relation(editor_relation):
     editor_relation.configure(port=8080)
+
+
+def build_assembly():
+    if assembly_image:
+        call(['docker', 'run', '-v', HOME + '/.m2:/root/.m2', '-v', ASSEMBLY_DIRECTORY + ':/assembly',
+              assembly_image])
 
 
 def start_che():
@@ -75,7 +89,8 @@ def start_che():
         'docker', 'run',
         '-id',
         '-v', '/var/run/docker.sock:/var/run/docker.sock',
-        '-v', '/home/ubuntu/:/data',
+        '-v', DATA_DIRECTORY + ':/data',
+        '-v', ASSEMBLY_DIRECTORY + ':/assembly',
         '-e', 'CHE_HOST={}'.format(unit_public_ip()),
         '-e', 'CHE_DOCKER_IP_EXTERNAL={}'.format(unit_public_ip()),
         'eclipse/che:{}'.format(CHE_VERSION),
@@ -118,7 +133,7 @@ def stop_che():
         '-i',
         '--rm',
         '-v', '/var/run/docker.sock:/var/run/docker.sock',
-        '-v', '/home/ubuntu/:/data',
+        '-v', DATA_DIRECTORY + ':/data',
         '-e', 'CHE_HOST={}'.format(unit_public_ip()),
         '-e', 'CHE_DOCKER_IP_EXTERNAL={}'.format(unit_public_ip()),
         'eclipse/che:{}'.format(CHE_VERSION),
