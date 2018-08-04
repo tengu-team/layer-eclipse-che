@@ -14,30 +14,24 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import sys
-import json
-from shutil import copyfile
-from time import sleep
 from subprocess import check_output, check_call, CalledProcessError, call
-from charms import layer
+from time import sleep
 
 import requests
 from charmhelpers.core.hookenv import (
     status_set,
     open_port,
     unit_public_ip,
-    charm_dir,
-)
-
+    log)
+from charms import layer
 from charms.reactive import set_flag, when, when_not
 
-
-CHE_VERSION = "6.4.0"
+CHE_VERSION = "6.9.0"
 HOME = "/home/ubuntu"
 DATA_DIRECTORY = HOME + "/data"
 ASSEMBLY_DIRECTORY = HOME + "/assembly"
 
 options = layer.options('eclipse-che')
-assembly_image = options.get('assembly', '')
 
 
 @when("docker.available")
@@ -48,20 +42,11 @@ def run_che():
     build_assembly()
     # Start and stop Che so che's config is generated
     start_che()
-    add_juju_stack()
-    stop_che()
-    copyfile("{}/templates/project-template-charms.json".format(charm_dir()),
-             DATA_DIRECTORY + "/instance/data/templates/project-template-charms.json")
-    copyfile("{}/templates/project-template-interface.json".format(charm_dir()),
-             DATA_DIRECTORY + "/instance/data/templates/project-template-interface.json")
-    copyfile("{}/templates/project-template-layer.json".format(charm_dir()),
-             DATA_DIRECTORY + "/instance/data/templates/project-template-layer.json")
-    # Start Che for real
-    start_che()
     # opened ports are used by `juju expose` so It's important to open all
     # ports a user connects to.
-    open_port('8080', protocol="TCP")           # Port to the UI
-    open_port('32768-65535', protocol="TCP")    # Ports to the workspaces
+    open_port('8080', protocol="TCP")  # Port to the UI
+    open_port('32768-65535', protocol="TCP")  # Ports to the workspaces
+    open_port('5050', protocol="TCP")
     status_set('active', 'Ready (eclipse/che)')
     set_flag('che.available')
 
@@ -72,6 +57,7 @@ def configure_http_relation(editor_relation):
 
 
 def build_assembly():
+    assembly_image = options.get('assembly', '')
     if assembly_image:
         call(['docker', 'run', '-v', HOME + '/.m2:/root/.m2', '-v', ASSEMBLY_DIRECTORY + ':/assembly',
               assembly_image])
@@ -84,7 +70,7 @@ def start_che():
     # after running `juju expose`, so this might never exit. Because of this
     # reason, we run the container in daemon mode, check che's status ourselves
     # and kill the container manually after Che is up.
-    print('Starting Che...')
+    log('Starting Che...')
     container_id = check_output([
         'docker', 'run',
         '-id',
@@ -93,75 +79,34 @@ def start_che():
         '-v', ASSEMBLY_DIRECTORY + ':/assembly',
         '-e', 'CHE_HOST={}'.format(unit_public_ip()),
         '-e', 'CHE_DOCKER_IP_EXTERNAL={}'.format(unit_public_ip()),
+        '-e', 'CHE_MULTIUSER=true',
         'eclipse/che:{}'.format(CHE_VERSION),
         'start',
         '--fast'], universal_newlines=True).rstrip()
     wait_until_che_running()
-    print('Che Started!')
-    print('Stopping Startup Container...')
+    log('Che Started!')
+    log('Stopping Startup Container...')
     try:
         sys.stdout.flush()
         check_call(['docker', 'stop', container_id])
     except CalledProcessError:
         # container has already stopped
-        print("Killing startup container failed.")
-    print("Removing startup container...")
+        log("Killing startup container failed.")
+    log("Removing startup container...")
     sys.stdout.flush()
     check_call(['docker', 'rm', container_id])
-    print("Startup container removed!")
+    log("Startup container removed!")
 
 
 def wait_until_che_running():
-    print('Waiting for che to come online.. This might take a few minutes.')
+    log('Waiting for che to come online.. This might take a few minutes.')
     while True:
         try:
             response = requests.get('http://localhost:8080')
             if response.status_code == 200:
                 break
-        except (requests.exceptions.ConnectionError) as err:
-            print(err)
-            print("retrying..")
-        sleep(1)
-    print('Che is online!')
-
-
-def stop_che():
-    print('Stopping Che...')
-    sys.stdout.flush()
-    check_call([
-        'docker', 'run',
-        '-i',
-        '--rm',
-        '-v', '/var/run/docker.sock:/var/run/docker.sock',
-        '-v', DATA_DIRECTORY + ':/data',
-        '-e', 'CHE_HOST={}'.format(unit_public_ip()),
-        '-e', 'CHE_DOCKER_IP_EXTERNAL={}'.format(unit_public_ip()),
-        'eclipse/che:{}'.format(CHE_VERSION),
-        'stop'])
-    print('Che is stopped!')
-
-
-def add_juju_stack():
-    # Add Juju stack
-    try:
-        url = "http://localhost:8080/api/stack"
-        headers = {'Content-Type': 'application/json',
-                   'Accept': 'application/json'}
-        with open("{}/templates/stack-juju-charm.json".format(charm_dir()), 'r') as stackfile:
-            stackdata = json.load(stackfile)
-        response = requests.post(url, data=json.dumps(stackdata), headers=headers)
-        if response.status_code != 201:
-            print("Could not create Juju stack.")
-        json_response = json.loads(response.text)
-        juju_stack_id = json_response['id']
-    except requests.exceptions.ConnectionError as err:
-        print(err)
-    # Add Juju stack icon
-    try:
-        url = "http://localhost:8080/api/stack/" + juju_stack_id + '/icon'
-        response = requests.post(url, files={'body': open("{}/templates/type-juju.svg".format(charm_dir()), "rb")})
-        if response.status_code != 200:
-            print("Juju stack icon upload failed.")
-    except requests.exceptions.ConnectionError as err:
-        print(err)
-
+        except requests.exceptions.ConnectionError as err:
+            log(err)
+            log("retrying..")
+        sleep(100)
+    log('Che is online!')
