@@ -1,2 +1,8 @@
 includes: ['layer:docker', 'interface:http']
 repo: git@github.com:IBCNServices/layer-eclipse-che.git
+defines:
+  assembly:
+    type: string
+    default: ''
+    description: |
+      Assembly image, this layer will run the assembly image with docker volume /assembly, which will be used as the custom che assembly.
